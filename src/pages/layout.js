@@ -1,89 +1,79 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Layout, Row, Col, Space, Input, Typography, Button, Form, Toast} from '@douyinfe/semi-ui';
+import {Layout, Row, Col, Space, Input, Typography, Button, Form, Toast, Chat} from '@douyinfe/semi-ui';
+
 
 export default function LayoutPage() {
-    const [userConfig, setUserConfig] = useState({
-        whitelist: [],
-        blacklist: [],
-        globalForward: false,
-        globalTextPreprocessing: "",
-        globalRule: "",
-        globalRecipientQQ: "",
-        globalRecipientGroup: "",
-        globalRecipientMember: {
-            group: "",
-            member: ""
-        },
-        matchMode: "keyword",
-        apikey: ""
-    });
-
-    const informations = {
-        matchMode: {
-            char: "只有收到的消息完全与设置的内容匹配时才会转发。例如，设置内容为“你好”，只有收到的消息为“你好”时才会触发转发",
-            keyword: "当收到的消息中包含设置的关键字时，就会触发转发。例如，设置内容为“你好”，收到的消息“你好帅”就会触发转发。",
-            uin: "当收到的消息来自指定的QQ/群号时，就会触发转发。例如，设置内容为“123456”，收到的消息来自QQ号为123456的好友时就会触发转发。",
-            ai: "由AI判定当前收到的消息是否应该被转发。"
-        }
-    }
+    const [userConfig, setUserConfig] = useState([]);
+    const [ chatMessages, setChatMessages ] = useState([]);
 
     const { Content } = Layout;
     const { Text } = Typography;
 
+    const generateMultipleContactsReple = contacts => {
+        let result = `找到了${contacts.length}个联系人：\n\n`;
+        for (let i = 0; i < contacts.length; i++) {
+            const contact = contacts[i];
+            result += `${i+1}. **微信名**: \`${contact?.name}\`  \n   **备注**: ${contact?.remark}  \n   **wxid**: \`${contact?.wxid}\`  \n   **微信号**: \`${contact?.['custom_id']}\`\n`;
+            if (i !== contacts.length - 1) result += "----\n";
+
+        }
+        return result+"\n\n请问您要查找的是哪个联系人？";
+    }
+
     return (
         <Layout style={{ height: '100%', width: '100%' }}>
             <Content style={{ height: '100%', width: '100%', padding: 10 }}>
-                <Form>
-                    <Form.Section text="转发规则" >
-                        <Row>
-                            <Col span={12}>
-                                <Form.Switch
-                                    field={'globalForward'}
-                                    label={'全局转发开关'}
-                                    initValue={userConfig.globalForward}
-                                    extraText={
-                                        <Text>
-                                            当前状态:
-                                            <Text strong style={{ paddingLeft: 10 }} type={ userConfig.globalForward ? "success" : "danger" } >
-                                                {
-                                                    userConfig.globalForward ? "开启" : "关闭"
+                <Row style={{ width: '100%', height: 'calc(100% - 20px)' }}>
+                    <Col span={6} style={{ height: '100%' }}></Col>
+                    <Col span={6} style={{ height: '100%' }}>
+
+                    </Col>
+                    <Col span={12} style={{ height: '100%' }}>
+                        <Chat
+                            chats={chatMessages}
+                            style={{ width: '100%' }}
+                            showClearContext
+                            onClear={() => {
+                                setChatMessages([]);
+                            }}
+                            onMessageSend={
+                                message => {
+                                    const newChatMessages = [...chatMessages, { role: 'user', content: message }]
+                                    setChatMessages([...newChatMessages]);
+
+                                    fetch('http://127.0.0.1:16001/api/ai/chat', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            port: 19001,
+                                            messages: newChatMessages
+                                        })
+                                    })
+                                        .then(res => res.json())
+                                        .then(data => {
+                                            if (data?.code === 200) {
+                                                const reply = data?.data
+                                                if (typeof reply === 'string') {
+                                                    newChatMessages.push({ role: 'assistant', content: reply })
+                                                    setChatMessages([...newChatMessages]);
+                                                    return;
+                                                }else if (Array.isArray(reply)) {
+                                                    newChatMessages.push({ role: 'assistant', content: generateMultipleContactsReple(reply) })
+                                                    setChatMessages([...newChatMessages]);
+                                                    return;
                                                 }
-                                            </Text>
-                                        </Text>
-                                    }
-                                    onChange={value => {
-                                        setUserConfig({...userConfig, globalForward: value})
-                                    }}
-                                />
-                            </Col>
-                        </Row>
-                        <Row>
-                            <Col span={12}>
-                                <Form.Select
-                                    field={"matchMode"}
-                                    label={"转发模式"}
-                                    style={{ width: '30%' }}
-                                    initValue={userConfig.matchMode}
-                                    onChange={value => {
-                                        setUserConfig({...userConfig, matchMode: value})
-                                    }}
-                                    extraText={
-                                        <Text ellipsis={{ showTooltip: true }}>
-                                            {
-                                                informations.matchMode?.[userConfig.matchMode] ?? ""
+                                                return
                                             }
-                                        </Text>
-                                    }
-                                >
-                                    <Form.Select.Option value={'char'}>消息完全匹配</Form.Select.Option>
-                                    <Form.Select.Option value={'keyword'}>包含关键字</Form.Select.Option>
-                                    <Form.Select.Option value={'uin'}>转发指定QQ/群号</Form.Select.Option>
-                                    <Form.Select.Option value={'ai'}>使用AI判定</Form.Select.Option>
-                                </Form.Select>
-                            </Col>
-                        </Row>
-                    </Form.Section>
-                </Form>
+                                            Toast.error(data?.message || '请求失败');
+                                        })
+                                }
+                            }
+                        />
+                    </Col>
+
+                </Row>
             </Content>
         </Layout>
     );
