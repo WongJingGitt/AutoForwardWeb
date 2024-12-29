@@ -10,9 +10,9 @@ import {
     Chat,
     List,
     Avatar,
-    RadioGroup, Radio
+    RadioGroup, Radio, Input
 } from '@douyinfe/semi-ui';
-import { IconUserCircle, IconUserAdd } from '@douyinfe/semi-icons';
+import { IconUserCircle, IconUserAdd, IconComment, IconSearch } from '@douyinfe/semi-icons';
 import { v4 as uuidv4 } from 'uuid';
 import './layout.css'
 
@@ -35,7 +35,8 @@ export default function LayoutPage() {
             avatar: 'https://wxa.wxs.qq.com/hing/20220531/phone-chat-icon_0.png',
         }
     });
-    const [ chatMessages, setChatMessages ] = useState([]);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [conversation, setConversation] = useState([{}])
 
     const { Content } = Layout;
     const { Text } = Typography;
@@ -73,7 +74,7 @@ export default function LayoutPage() {
         <Layout style={{ height: '100%', width: '100%' }}>
             <Content style={{ height: '100%', width: '100%', padding: 10 }}>
                 <Row style={{ width: '100%', height: 'calc(100% - 20px)' }}>
-                    <Col span={6} style={{ height: '100%' }}>
+                    <Col span={4} style={{ height: '100%' }}>
                         <RadioGroup
                             style={{width: '100%'}}
                             value={roleConfig.user.port}
@@ -145,6 +146,24 @@ export default function LayoutPage() {
                             </List>
                         </RadioGroup>
                     </Col>
+                    <Col span={4} style={{ height: '100%' }}>
+                        <RadioGroup type="pureCard" style={{ width: '100%' }} >
+                            <List
+                                style={{ width: '100%' }}
+                                header={
+                                    <Space style={{ width: '100%' }} vertical>
+                                        <Button
+                                            theme='outline' type='primary'
+                                            icon={<IconComment />} block
+                                        >
+                                            新建对话
+                                        </Button>
+                                        <Input prefix={<IconSearch />} placeholder='搜索历史会话' />
+                                    </Space>
+                                }
+                            />
+                        </RadioGroup>
+                    </Col>
                     <Col span={12} style={{ height: '100%' }}>
                         <Chat
                             chats={chatMessages}
@@ -195,9 +214,7 @@ export default function LayoutPage() {
                             }
                         />
                     </Col>
-                    <Col span={6} style={{ height: '100%' }}>
-
-                    </Col>
+                    <Col span={4}></Col>
                 </Row>
             </Content>
         </Layout>
