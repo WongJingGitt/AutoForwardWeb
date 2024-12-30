@@ -36,7 +36,8 @@ export default function LayoutPage() {
         }
     });
     const [chatMessages, setChatMessages] = useState([]);
-    const [conversation, setConversation] = useState([{}])
+    const [conversation, setConversation] = useState([])
+    const [selectedConversation, setSelectedConversation] = useState(null);
 
     const { Content } = Layout;
     const { Text } = Typography;
@@ -50,6 +51,19 @@ export default function LayoutPage() {
 
         }
         return contacts.length > 1 ? result+"\n\n请问您要查找的是哪个联系人？" : result;
+    }
+
+    const getConversationMsg = id => {
+        return fetch('http://127.0.0.1:16001/api/conversations/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: id }) })
+            .then(res => res.json())
+            .then(data => {
+                if (data?.code === 200) {
+                    return data?.data;
+                } else {
+                    Toast.error(data?.message || '请求失败');
+                    return [];
+                }
+            })
     }
 
     useEffect(() => {
@@ -68,7 +82,24 @@ export default function LayoutPage() {
             .catch(err => {
                 Toast.error(err.message || '请求失败');
             })
+
     }, []);
+
+    useEffect(() => {
+        if (!roleConfig.user.port) return;
+        fetch('http://127.0.0.1:16001/api/conversations/list', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: roleConfig.user.port }) })
+            .then(res => res.json())
+            .then(data => {
+                if (data?.code === 200) {
+                    setConversation(data?.data);
+                } else {
+                    Toast.error(data?.message || '请求失败');
+                }
+            })
+            .catch(err => {
+                Toast.error(err.message || '请求失败');
+            })
+    }, [roleConfig]);
 
     return (
         <Layout style={{ height: '100%', width: '100%' }}>
@@ -147,11 +178,23 @@ export default function LayoutPage() {
                         </RadioGroup>
                     </Col>
                     <Col span={4} style={{ height: '100%' }}>
-                        <RadioGroup type="pureCard" style={{ width: '100%' }} >
+                        <RadioGroup
+                            type="pureCard"
+                            style={{ width: '100%' }}
+                            onChange={event => {
+                                const id = event.target.value
+                                getConversationMsg(id)
+                                    .then(res => {
+                                        setChatMessages(res)
+                                        setSelectedConversation(id)
+                                    })
+                            }}
+                            value={selectedConversation}
+                        >
                             <List
                                 style={{ width: '100%' }}
                                 header={
-                                    <Space style={{ width: '100%' }} vertical>
+                                    <Space style={{ width: '100%', marginBottom: 10 }} vertical>
                                         <Button
                                             theme='outline' type='primary'
                                             icon={<IconComment />} block
@@ -161,6 +204,9 @@ export default function LayoutPage() {
                                         <Input prefix={<IconSearch />} placeholder='搜索历史会话' />
                                     </Space>
                                 }
+                                split
+                                dataSource={conversation}
+                                renderItem={item => <List.Item style={{ width: '100%', padding: 0 }} className='list-item'><Radio style={{ width: '100%' }} value={item?.conversation_id}>{item?.summary}</Radio></List.Item>}
                             />
                         </RadioGroup>
                     </Col>
@@ -178,8 +224,9 @@ export default function LayoutPage() {
                             roleConfig={roleConfig}
                             onMessageSend={
                                 message => {
-                                    const newChatMessages = [...chatMessages, { role: 'user', content: message, createAt: (new Date()).getTime(), id: uuidv4() }];
-                                    newChatMessages.push({role: 'assistant', content: '正在查询...', createAt: (new Date()).getTime(), status: 'loading', id: uuidv4()});
+                                    const assistantId = uuidv4()
+                                    const newChatMessages = [...chatMessages, { role: 'user', content: message, createAt: (new Date()).getTime(), id: uuidv4()}];
+                                    newChatMessages.push({role: 'assistant', content: '正在查询...', createAt: (new Date()).getTime(), status: 'loading', id: assistantId});
                                     setChatMessages([...newChatMessages]);
 
                                     fetch('http://127.0.0.1:16001/api/ai/chat', {
@@ -189,7 +236,9 @@ export default function LayoutPage() {
                                         },
                                         body: JSON.stringify({
                                             port: roleConfig.user.port,
-                                            messages: newChatMessages.slice(0,-1)
+                                            messages: newChatMessages.slice(0,-1),
+                                            assistant_id: assistantId,
+                                            conversation_id: selectedConversation
                                         })
                                     })
                                         .then(res => res.json())
