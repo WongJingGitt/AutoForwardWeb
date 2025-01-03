@@ -12,8 +12,9 @@ import {
     Avatar,
     RadioGroup, Radio, Input
 } from '@douyinfe/semi-ui';
-import { IconUserCircle, IconUserAdd, IconComment, IconSearch } from '@douyinfe/semi-icons';
+import { IconUserCircle, IconUserAdd, IconComment, IconSearch} from '@douyinfe/semi-icons';
 import { v4 as uuidv4 } from 'uuid';
+import requests from "../utils/requests";
 import './layout.css'
 
 
@@ -36,12 +37,19 @@ export default function LayoutPage() {
         }
     });
     const [chatMessages, setChatMessages] = useState([]);
-    const [conversation, setConversation] = useState([])
+    const [conversation, setConversation] = useState([]);
+    const [searchConversationValue, setSearchConversationValue] = useState('')
     const [selectedConversation, setSelectedConversation] = useState(null);
+    const [summaryValue, setSummaryValue] = useState('');
 
     const { Content } = Layout;
     const { Text } = Typography;
 
+    const initStatus = () => {
+        setSummaryValue('');
+        setChatMessages([]);
+        setSelectedConversation(null);
+    }
     const generateMultipleContactsReple = contacts => {
         let result = `找到了${contacts.length}个联系人：\n\n`;
         for (let i = 0; i < contacts.length; i++) {
@@ -54,8 +62,7 @@ export default function LayoutPage() {
     }
 
     const getConversationMsg = id => {
-        return fetch('http://127.0.0.1:16001/api/conversations/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: id }) })
-            .then(res => res.json())
+        return requests('api/conversations/messages', { conversation_id: id })
             .then(data => {
                 if (data?.code === 200) {
                     return data?.data;
@@ -66,13 +73,15 @@ export default function LayoutPage() {
             })
     }
 
+    const conversationList = conversation.filter(item => item?.summary?.toLowerCase().includes(searchConversationValue.toLowerCase()))
+
     useEffect(() => {
-        fetch('http://127.0.0.1:16001/api/bot/list', { method: 'GET' })
-            .then(res => res.json())
+        requests("api/bot/list", {}, "GET")
             .then(data => {
                 if (data?.code === 200) {
-                    setBots(data?.data);
-                    if (data?.data.length > 0) {
+                    const botList = data?.data?.filter(item => item?.info)
+                    setBots(botList);
+                    if (botList.length > 0) {
                         setRoleConfig({...roleConfig, user: { name: data?.data[0]?.name, avatar: data?.data[0]?.info?.headImage, port: data?.data[0]?.port }})
                     }
                 } else {
@@ -87,8 +96,7 @@ export default function LayoutPage() {
 
     useEffect(() => {
         if (!roleConfig.user.port) return;
-        fetch('http://127.0.0.1:16001/api/conversations/list', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: roleConfig.user.port }) })
-            .then(res => res.json())
+        requests("api/conversations/list", { port: roleConfig.user.port })
             .then(data => {
                 if (data?.code === 200) {
                     setConversation(data?.data);
@@ -112,6 +120,7 @@ export default function LayoutPage() {
                             onChange={value => {
                                 const selectedBot = bots.filter(item => item.port === value.target.value)[0]
                                 setRoleConfig({...roleConfig, user: { name: selectedBot?.name, avatar: selectedBot?.info?.headImage, port: selectedBot?.port }})
+                                initStatus();
                             }}
                         >
                             <List
@@ -123,13 +132,11 @@ export default function LayoutPage() {
                                             loading={loginLoading}
                                             onClick={() => {
                                                 setLoginLoading(true);
-                                                fetch('http://127.0.0.1:16001/api/bot/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({  }) })
-                                                    .then(res => res.json())
+                                                requests('api/bot/start', {}, 'POST')
                                                     .then(data => {
                                                         if (data?.code === 200) {
                                                             const interval = setInterval(() => {
-                                                                fetch('http://127.0.0.1:16001/api/bot/login_heartbeat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: data?.data?.port }) })
-                                                                    .then(res => res.json())
+                                                                requests("api/bot/login_heartbeat", { port: data?.data?.port })
                                                                     .then(loginStatus => {
                                                                         if (loginStatus?.data?.status) {
                                                                             clearInterval(interval);
@@ -147,6 +154,7 @@ export default function LayoutPage() {
                                                         Toast.error(err.message || '请求失败');
                                                         setLoginLoading(false);
                                                     })
+
                                             }}
                                         >
                                             登录微信
@@ -177,7 +185,7 @@ export default function LayoutPage() {
                             </List>
                         </RadioGroup>
                     </Col>
-                    <Col span={4} style={{ height: '100%' }}>
+                    <Col span={4} style={{ height: '100%', paddingLeft: 10, paddingRight: 10 }}>
                         <RadioGroup
                             type="pureCard"
                             style={{ width: '100%' }}
@@ -198,25 +206,41 @@ export default function LayoutPage() {
                                         <Button
                                             theme='outline' type='primary'
                                             icon={<IconComment />} block
+                                            onClick={() => {
+                                                setChatMessages([]);
+                                                setSelectedConversation(null);
+                                            }}
                                         >
                                             新建对话
                                         </Button>
-                                        <Input prefix={<IconSearch />} placeholder='搜索历史会话' />
+                                        <Input
+                                            prefix={<IconSearch />}
+                                            placeholder='搜索历史会话'
+                                            onChange={value => {
+                                                setSearchConversationValue(value)
+                                            }}
+                                        />
                                     </Space>
                                 }
                                 split
-                                dataSource={conversation}
-                                renderItem={item => <List.Item style={{ width: '100%', padding: 0 }} className='list-item'><Radio style={{ width: '100%' }} value={item?.conversation_id}>{item?.summary}</Radio></List.Item>}
+                                dataSource={conversationList}
+                                renderItem={item => (
+                                    <List.Item style={{ width: '100%', padding: 0 }} className='list-item'>
+                                        <Radio style={{width: '100%'}} value={item?.conversation_id}>
+                                            {item?.summary}
+                                        </Radio>
+                                    </List.Item>
+                                )}
                             />
                         </RadioGroup>
                     </Col>
-                    <Col span={12} style={{ height: '100%' }}>
+                    <Col span={12} style={{ height: '100%', paddingRight: 10 }}>
                         <Chat
                             chats={chatMessages}
                             uploadProps={{disabled: true, style: { display: 'none' }}}
                             style={{ width: '100%', maxWidth: '100%' }}
                             onMessageDelete={value => {
-                                setChatMessages(chatMessages.filter(item => item.id !== value.id));
+                                setChatMessages(chatMessages.filter(item => item.message_id !== value.message_id));
                             }}
                             onMessageReset={message => {
                                 console.log(message)
@@ -225,34 +249,32 @@ export default function LayoutPage() {
                             onMessageSend={
                                 message => {
                                     const assistantId = uuidv4()
-                                    const newChatMessages = [...chatMessages, { role: 'user', content: message, createAt: (new Date()).getTime(), id: uuidv4()}];
-                                    newChatMessages.push({role: 'assistant', content: '正在查询...', createAt: (new Date()).getTime(), status: 'loading', id: assistantId});
+                                    const newChatMessages = [...chatMessages, { role: 'user', content: message, createAt: (new Date()).getTime(), message_id: uuidv4()}];
+                                    newChatMessages.push({role: 'assistant', content: '正在查询...', createAt: (new Date()).getTime(), status: 'loading', message_id: assistantId});
                                     setChatMessages([...newChatMessages]);
 
-                                    fetch('http://127.0.0.1:16001/api/ai/chat', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json'
-                                        },
-                                        body: JSON.stringify({
-                                            port: roleConfig.user.port,
-                                            messages: newChatMessages.slice(0,-1),
-                                            assistant_id: assistantId,
-                                            conversation_id: selectedConversation
-                                        })
+                                    requests('/api/ai/chat', {
+                                        port: roleConfig.user.port,
+                                        messages: newChatMessages.slice(0,-1),
+                                        assistant_id: assistantId,
+                                        conversation_id: selectedConversation
                                     })
-                                        .then(res => res.json())
                                         .then(data => {
                                             if (data?.code === 200) {
-                                                const reply = data?.data
+                                                const reply = data?.data?.message
+                                                const summary = data?.data?.summary
+                                                const conversationId = data?.data?.conversation_id
+                                                const newConversation = data?.data?.new_conversation
                                                 if (typeof reply === 'string') {
                                                     newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'success', content: reply};
                                                     setChatMessages([...newChatMessages]);
-                                                    return;
                                                 }else if (Array.isArray(reply)) {
                                                     newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'success', content: generateMultipleContactsReple(reply)};
                                                     setChatMessages([...newChatMessages]);
-                                                    return;
+                                                }
+                                                if (newConversation) {
+                                                    setConversation([{conversation_id: conversationId, summary: summary}, ...conversation])
+                                                    setSelectedConversation(conversationId)
                                                 }
                                                 return
                                             }
@@ -261,9 +283,57 @@ export default function LayoutPage() {
                                         })
                                 }
                             }
+                            showClearContext={selectedConversation}
+                            onClear={() => {
+                                if (!selectedConversation) return;
+                                requests('/api/conversations/delete', { port: roleConfig.user.port, conversation_id: selectedConversation })
+                                    .then(data => {
+                                        if (data?.code === 200) {
+                                            setConversation(conversation.filter(item => item.conversation_id !== selectedConversation))
+                                            setChatMessages([])
+                                            setSelectedConversation(null)
+                                        }
+                                    })
+                            }}
                         />
                     </Col>
-                    <Col span={4}></Col>
+                    <Col span={4} style={{height: '100%', paddingTop: 10}}>
+                        {
+                            selectedConversation && (
+                                <Row style={{ height: 40 }}>
+                                    <Col span={5} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }} >
+                                        <Text>修改名称</Text>
+                                    </Col>
+                                    <Col span={15} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                                        <Input
+                                            style={{ width: '95%' }}
+                                            placeholder={conversation.find(item => item.conversation_id === selectedConversation)?.summary}
+                                            onChange={value => {
+                                                setSummaryValue(value)
+                                            }}
+                                        />
+                                    </Col>
+                                    <Col span={4} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                                        <Button
+                                            onClick={() => {
+                                                requests("/api/conversations/summary/update", {port: roleConfig.user.port, conversation_id: selectedConversation, summary: summaryValue})
+                                                    .then(data => {
+                                                        if (data?.code === 200) {
+                                                            setConversation(conversation.map(item => {
+                                                                if (item.conversation_id === selectedConversation) {
+                                                                    return {...item, summary: summaryValue}
+                                                                }
+                                                                return item
+                                                            }))
+                                                        }
+                                                    })
+                                            }}
+                                        >提交</Button>
+                                    </Col>
+                                </Row>
+                            )
+                        }
+                    </Col>
                 </Row>
             </Content>
         </Layout>
