@@ -15,6 +15,7 @@ import {
 import { IconUserCircle, IconUserAdd, IconComment, IconSearch} from '@douyinfe/semi-icons';
 import { v4 as uuidv4 } from 'uuid';
 import requests from "../utils/requests";
+import { io as socketIO } from "socket.io-client";
 import './layout.css'
 
 
@@ -41,6 +42,8 @@ export default function LayoutPage() {
     const [searchConversationValue, setSearchConversationValue] = useState('')
     const [selectedConversation, setSelectedConversation] = useState(null);
     const [summaryValue, setSummaryValue] = useState('');
+    const [chatSocket, setChatSocket] = useState(null);
+    const [sendStatus, setSendStatus] = useState(true)
 
     const { Content } = Layout;
     const { Text } = Typography;
@@ -49,16 +52,6 @@ export default function LayoutPage() {
         setSummaryValue('');
         setChatMessages([]);
         setSelectedConversation(null);
-    }
-    const generateMultipleContactsReple = contacts => {
-        let result = `找到了${contacts.length}个联系人：\n\n`;
-        for (let i = 0; i < contacts.length; i++) {
-            const contact = contacts[i];
-            result += `${i+1}. **微信名**: \`${contact?.name}\`  \n   **备注**: ${contact?.remark}  \n   **wxid**: \`${contact?.wxid}\`  \n   **微信号**: \`${contact?.['custom_id']}\`\n`;
-            if (i !== contacts.length - 1) result += "----\n";
-
-        }
-        return contacts.length > 1 ? result+"\n\n请问您要查找的是哪个联系人？" : result;
     }
 
     const getConversationMsg = id => {
@@ -91,7 +84,7 @@ export default function LayoutPage() {
             .catch(err => {
                 Toast.error(err.message || '请求失败');
             })
-
+        chatSocket?.disconnect();
     }, []);
 
     useEffect(() => {
@@ -121,6 +114,7 @@ export default function LayoutPage() {
                                 const selectedBot = bots.filter(item => item.port === value.target.value)[0]
                                 setRoleConfig({...roleConfig, user: { name: selectedBot?.name, avatar: selectedBot?.info?.headImage, port: selectedBot?.port }})
                                 initStatus();
+                                chatSocket?.disconnect();
                             }}
                         >
                             <List
@@ -191,6 +185,7 @@ export default function LayoutPage() {
                             style={{ width: '100%' }}
                             onChange={event => {
                                 const id = event.target.value
+                                chatSocket?.disconnect();
                                 getConversationMsg(id)
                                     .then(res => {
                                         setChatMessages(res)
@@ -248,39 +243,58 @@ export default function LayoutPage() {
                             roleConfig={roleConfig}
                             onMessageSend={
                                 message => {
+                                    if (!sendStatus) {
+                                        Toast.error('请等待上一次请求完成');
+                                        return
+                                    }
+                                    setSendStatus(false);
+
                                     const assistantId = uuidv4()
                                     const newChatMessages = [...chatMessages, { role: 'user', content: message, createAt: (new Date()).getTime(), message_id: uuidv4()}];
                                     newChatMessages.push({role: 'assistant', content: '正在查询...', createAt: (new Date()).getTime(), status: 'loading', message_id: assistantId});
                                     setChatMessages([...newChatMessages]);
 
-                                    requests('/api/ai/chat', {
-                                        port: roleConfig.user.port,
-                                        messages: newChatMessages.slice(0,-1),
-                                        assistant_id: assistantId,
-                                        conversation_id: selectedConversation
-                                    })
-                                        .then(data => {
-                                            if (data?.code === 200) {
-                                                const reply = data?.data?.message
-                                                const summary = data?.data?.summary
-                                                const conversationId = data?.data?.conversation_id
-                                                const newConversation = data?.data?.new_conversation
-                                                if (typeof reply === 'string') {
-                                                    newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'success', content: reply};
-                                                    setChatMessages([...newChatMessages]);
-                                                }else if (Array.isArray(reply)) {
-                                                    newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'success', content: generateMultipleContactsReple(reply)};
-                                                    setChatMessages([...newChatMessages]);
-                                                }
-                                                if (newConversation) {
-                                                    setConversation([{conversation_id: conversationId, summary: summary}, ...conversation])
-                                                    setSelectedConversation(conversationId)
-                                                }
-                                                return
-                                            }
-                                            newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'error', content: data?.message || '请求失败'};
+                                    const socket = socketIO('ws://127.0.0.1:16001/api/ai/stream');
+                                    setChatSocket(socket);
+
+                                    socket.on("chat_message", (data) => {
+                                        if (data?.code === 200) {
+                                            const reply = data?.data?.message
+                                            const summary = data?.data?.summary
+                                            const conversationId = data?.data?.conversation_id
+                                            const newConversation = data?.data?.new_conversation
+                                            const responseMessageId = data?.data?.message_id
+                                            const responseMessageTime = data?.data?.message_time
+
+                                            newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'success', content: reply, message_id: responseMessageId, createAt: responseMessageTime};
+                                            newChatMessages.push({role: 'assistant', content: '正在查询...', createAt: (new Date()).getTime(), status: 'loading', message_id: assistantId});
                                             setChatMessages([...newChatMessages]);
-                                        })
+
+                                            if (newConversation) {
+                                                setConversation([{conversation_id: conversationId, summary: summary}, ...conversation])
+                                                setSelectedConversation(conversationId)
+                                            }
+                                            return
+                                        }
+                                        newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'error', content: data?.message || '请求失败'};
+                                        setChatMessages([...newChatMessages]);
+                                    });
+
+                                    socket.on("connect", () => {
+                                        socket.emit('chat_message', {
+                                            port: roleConfig.user.port,
+                                            messages: newChatMessages.slice(0, -1),
+                                            assistant_id: assistantId,
+                                            conversation_id: selectedConversation
+                                        });
+                                    });
+
+                                    socket.on("disconnect", () => {
+                                        newChatMessages[newChatMessages.length - 1] = {...newChatMessages.at(-1), status: 'success', content: '生成完毕'};
+                                        setChatMessages([...newChatMessages])
+                                        setSendStatus(true);
+                                        socket.disconnect();
+                                    })
                                 }
                             }
                             showClearContext={selectedConversation}
