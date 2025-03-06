@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
     Layout,
     Row,
@@ -10,9 +10,9 @@ import {
     Chat,
     List,
     Avatar,
-    RadioGroup, Radio, Input
+    RadioGroup, Radio, Input, Select, Tooltip
 } from '@douyinfe/semi-ui';
-import { IconUserCircle, IconUserAdd, IconComment, IconSearch} from '@douyinfe/semi-icons';
+import {IconUserCircle, IconUserAdd, IconComment, IconSearch, IconInfoCircle} from '@douyinfe/semi-icons';
 import { v4 as uuidv4 } from 'uuid';
 import requests from "../utils/requests";
 import { io as socketIO } from "socket.io-client";
@@ -44,6 +44,7 @@ export default function LayoutPage() {
     const [summaryValue, setSummaryValue] = useState('');
     const [chatSocket, setChatSocket] = useState(null);
     const [sendStatus, setSendStatus] = useState(true)
+    const [selectedModel, setSelectedModel] = useState('glm-4-flash')
 
     const { Content } = Layout;
     const { Text } = Typography;
@@ -102,6 +103,17 @@ export default function LayoutPage() {
             })
     }, [roleConfig]);
 
+    const modelInfo = useMemo(() => {
+        return {
+            "glm-4-flash": <Text>GLM-4-Flash: 免费的模型，可以前往<Text link={{href: "https://open.bigmodel.cn/", target: '_blank'}}>智谱开放平台</Text>申请APIKEY使用</Text>,
+            "gemini-2.0-flash-exp": <Text>Gemini 2.0-Flash-Exp: 免费的模型，需要翻墙，可以前往<Text link={{href: "https://aistudio.google.com/app/apikey", target: '_blank'}}>谷歌AI Studio</Text>申请APIKEY使用</Text>,
+            "deepseek-v3-aliyun": <Text>DeepSeek V3(阿里云): 新用户赠送额度，不过不支持函数调用，暂时不可用。</Text>,
+            "deepseek-r1-aliyun": <Text>DeepSeek R1(阿里云): 新用户赠送额度，不过不支持函数调用，暂时不可用。</Text>,
+            "qwen2.5": <Text>通义千问2.5: 新用户赠送额度，可以前往<Text link={{href: 'https://bailian.console.aliyun.com/', target: '_blank'}}>阿里云百炼</Text>申请APIKEY使用</Text>,
+            "deepseek_v3": <Text>DeepSeek V3(官方): 新用户赠送额度，可以前往<Text link={{href: "https://platform.deepseek.com/", target: '_blank'}}>DeepSeek官方开放平台</Text>申请APIKEY使用</Text>
+        }
+    }, [])
+
     return (
         <Layout style={{ height: '100%', width: '100%' }}>
             <Content style={{ height: '100%', width: '100%', padding: 10 }}>
@@ -136,7 +148,9 @@ export default function LayoutPage() {
                                                                             clearInterval(interval);
                                                                             setLoginLoading(false);
                                                                             setBots([...bots, {...data?.data, ...loginStatus?.data?.info}]);
-                                                                            window.location.reload();
+                                                                            setTimeout(() => {
+                                                                                window.location.reload();
+                                                                            }, 1000)
                                                                         }
                                                                     })
                                                             }, 1000)
@@ -285,7 +299,8 @@ export default function LayoutPage() {
                                             port: roleConfig.user.port,
                                             messages: newChatMessages.slice(0, -1),
                                             assistant_id: assistantId,
-                                            conversation_id: selectedConversation
+                                            conversation_id: selectedConversation,
+                                            model: selectedModel
                                         });
                                     });
 
@@ -312,9 +327,33 @@ export default function LayoutPage() {
                         />
                     </Col>
                     <Col span={4} style={{height: '100%', paddingTop: 10}}>
+                        <Row style={{height: 40, width: '100%'}}>
+                            <Col span={5} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }} >
+                                <Text>选择模型</Text>
+                            </Col>
+                            <Col span={19} style={{height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                                <Select
+                                    style={{width: '95%'}}
+                                    value={selectedModel}
+                                    onChange={(value) => {
+                                        setSelectedModel(value)
+                                    }}
+                                >
+                                    <Select.Option value={'glm-4-flash'}>GLM-4-Flash</Select.Option>
+                                    <Select.Option value={'gemini-2.0-flash-exp'}>Gemini 2.0-Flash-Exp</Select.Option>
+                                    <Select.Option value={'deepseek-v3-aliyun'} disabled>DeepSeek V3(阿里云)</Select.Option>
+                                    <Select.Option value={'deepseek-r1-aliyun'} disabled>DeepSeek R1(阿里云)</Select.Option>
+                                    <Select.Option value={'qwen2.5'}>通义千问2.5</Select.Option>
+                                    <Select.Option value={'deepseek_v3'}>DeepSeek V3(官方)</Select.Option>
+                                </Select>
+                            </Col>
+                        </Row>
+                        <Row style={{height: 40, width: '100%', paddingTop: 5}}>
+                            <Col span={24}>{modelInfo?.[selectedModel] ?? '暂无介绍'}</Col>
+                        </Row>
                         {
                             selectedConversation && (
-                                <Row style={{ height: 40 }}>
+                                <Row style={{ height: 40, paddingTop: 10 }}>
                                     <Col span={5} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }} >
                                         <Text>修改名称</Text>
                                     </Col>
