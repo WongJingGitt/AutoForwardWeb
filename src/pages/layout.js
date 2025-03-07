@@ -350,6 +350,15 @@ export default function LayoutPage() {
                         </Row>
                         <Row style={{height: 40, width: '100%', paddingTop: 5}}>
                             <Col span={24}>{modelInfo?.[selectedModel] ?? '暂无介绍'}</Col>
+                            {/*TODO: 动态说明文案，动态模型，适配Markdown*/}
+                            {/*<Row>*/}
+                            {/*    <Col span={24}>*/}
+                            {/*        <MarkdownRender*/}
+                            {/*            raw={`免费的模型，可以前往<Text link={{href: '', target: '__blank'}}></Text>申请APIKEY使用`}*/}
+                            {/*            components={{...MarkdownRender.defaultComponents, Text: Text}}*/}
+                            {/*        />*/}
+                            {/*    </Col>*/}
+                            {/*</Row>*/}
                         </Row>
                         {
                             selectedConversation && (
