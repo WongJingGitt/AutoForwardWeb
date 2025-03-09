@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
     Layout,
     Row,
@@ -10,14 +10,29 @@ import {
     Chat,
     List,
     Avatar,
-    RadioGroup, Radio, Input, Select, Tooltip
+    RadioGroup, Radio, Input, Select, MarkdownRender, ButtonGroup, Modal
 } from '@douyinfe/semi-ui';
-import {IconUserCircle, IconUserAdd, IconComment, IconSearch, IconInfoCircle} from '@douyinfe/semi-icons';
+import { Conversations } from '@ant-design/x';
+import {IconUserCircle, IconUserAdd, IconComment, IconSearch, IconEdit, IconDelete} from '@douyinfe/semi-icons';
 import { v4 as uuidv4 } from 'uuid';
 import requests from "../utils/requests";
 import { io as socketIO } from "socket.io-client";
 import './layout.css'
 
+function RenameModal({ visible=false, value, setValue, setVisible }) {
+    const [newValue, setNewValue] = useState(value);
+    return <Modal
+        title="编辑对话名称"
+        visible={visible}
+        onOk={() => {
+            setValue(newValue);
+            setVisible(false);
+        }}
+        onCancel={() => setVisible(false)}
+    >
+        <Input value={newValue} onChange={v => setNewValue(v)} />
+    </Modal>
+}
 
 export default function LayoutPage() {
     const [bots, setBots] = useState([]);
@@ -44,7 +59,8 @@ export default function LayoutPage() {
     const [summaryValue, setSummaryValue] = useState('');
     const [chatSocket, setChatSocket] = useState(null);
     const [sendStatus, setSendStatus] = useState(true)
-    const [selectedModel, setSelectedModel] = useState('glm-4-flash')
+    const [selectedModel, setSelectedModel] = useState({})
+    const [modelList, setModelList] = useState([])
 
     const { Content } = Layout;
     const { Text } = Typography;
@@ -67,9 +83,29 @@ export default function LayoutPage() {
             })
     }
 
-    const conversationList = conversation.filter(item => item?.summary?.toLowerCase().includes(searchConversationValue.toLowerCase()))
+    const refreshModels = () => {
+        requests("api/models", {}, "GET")
+            .then(data => {
+                if (data?.code === 200) {
+                    setModelList(data?.data)
+                    for (let i = 0; i < data?.data?.length; i++) {
+                        if (data?.data[i]?.apikey) {
+                            setSelectedModel(data?.data[i])
+                            return;
+                        }
+                    }
+                    setSelectedModel({})
+                } else {
+                    Toast.error(data?.message || '请求失败');
+                }
+            })
+            .catch(err => {
+                Toast.error(err.message || '请求失败');
+            })
+    }
 
     useEffect(() => {
+        refreshModels();
         requests("api/bot/list", {}, "GET")
             .then(data => {
                 if (data?.code === 200) {
@@ -93,7 +129,13 @@ export default function LayoutPage() {
         requests("api/conversations/list", { port: roleConfig.user.port })
             .then(data => {
                 if (data?.code === 200) {
-                    setConversation(data?.data);
+                    setConversation(data?.data?.map(item => {
+                        return {
+                            ...item,
+                            key: item?.conversation_id,
+                            label: item?.summary
+                        }
+                    }));
                 } else {
                     Toast.error(data?.message || '请求失败');
                 }
@@ -102,17 +144,6 @@ export default function LayoutPage() {
                 Toast.error(err.message || '请求失败');
             })
     }, [roleConfig]);
-
-    const modelInfo = useMemo(() => {
-        return {
-            "glm-4-flash": <Text>GLM-4-Flash: 免费的模型，可以前往<Text link={{href: "https://open.bigmodel.cn/", target: '_blank'}}>智谱开放平台</Text>申请APIKEY使用</Text>,
-            "gemini-2.0-flash-exp": <Text>Gemini 2.0-Flash-Exp: 免费的模型，需要翻墙，可以前往<Text link={{href: "https://aistudio.google.com/app/apikey", target: '_blank'}}>谷歌AI Studio</Text>申请APIKEY使用</Text>,
-            "deepseek-v3-aliyun": <Text>DeepSeek V3(阿里云): 新用户赠送额度，不过不支持函数调用，暂时不可用。</Text>,
-            "deepseek-r1-aliyun": <Text>DeepSeek R1(阿里云): 新用户赠送额度，不过不支持函数调用，暂时不可用。</Text>,
-            "qwen2.5": <Text>通义千问2.5: 新用户赠送额度，可以前往<Text link={{href: 'https://bailian.console.aliyun.com/', target: '_blank'}}>阿里云百炼</Text>申请APIKEY使用</Text>,
-            "deepseek_v3": <Text>DeepSeek V3(官方): 新用户赠送额度，可以前往<Text link={{href: "https://platform.deepseek.com/", target: '_blank'}}>DeepSeek官方开放平台</Text>申请APIKEY使用</Text>
-        }
-    }, [])
 
     return (
         <Layout style={{ height: '100%', width: '100%' }}>
@@ -194,54 +225,56 @@ export default function LayoutPage() {
                         </RadioGroup>
                     </Col>
                     <Col span={4} style={{ height: '100%', paddingLeft: 10, paddingRight: 10 }}>
-                        <RadioGroup
-                            type="pureCard"
-                            style={{ width: '100%' }}
-                            onChange={event => {
-                                const id = event.target.value
-                                chatSocket?.disconnect();
-                                getConversationMsg(id)
-                                    .then(res => {
-                                        setChatMessages(res)
-                                        setSelectedConversation(id)
-                                    })
-                            }}
-                            value={selectedConversation}
-                        >
-                            <List
-                                style={{ width: '100%' }}
-                                header={
-                                    <Space style={{ width: '100%', marginBottom: 10 }} vertical>
-                                        <Button
-                                            theme='outline' type='primary'
-                                            icon={<IconComment />} block
-                                            onClick={() => {
-                                                setChatMessages([]);
-                                                setSelectedConversation(null);
-                                            }}
-                                        >
-                                            新建对话
-                                        </Button>
-                                        <Input
-                                            prefix={<IconSearch />}
-                                            placeholder='搜索历史会话'
-                                            onChange={value => {
-                                                setSearchConversationValue(value)
-                                            }}
-                                        />
-                                    </Space>
-                                }
-                                split
-                                dataSource={conversationList}
-                                renderItem={item => (
-                                    <List.Item style={{ width: '100%', padding: 0 }} className='list-item'>
-                                        <Radio style={{width: '100%'}} value={item?.conversation_id}>
-                                            {item?.summary}
-                                        </Radio>
-                                    </List.Item>
-                                )}
+                        <Space style={{ width: '100%', marginBottom: 10, height: '100%' }} vertical>
+                            <Button
+                                theme='outline' type='primary'
+                                icon={<IconComment />} block
+                                onClick={() => {
+                                    setChatMessages([]);
+                                    setSelectedConversation(null);
+                                }}
+                            >
+                                新建对话
+                            </Button>
+                            <Input
+                                prefix={<IconSearch />}
+                                placeholder='搜索历史会话'
+                                onChange={value => {
+                                    setSearchConversationValue(value)
+                                }}
                             />
-                        </RadioGroup>
+                            <Conversations
+                                activeKey={selectedConversation}
+                                style={{width: '100%', height: '100%'}}
+                                items={conversation.filter(item => item?.summary?.includes(searchConversationValue))}
+                                onActiveChange={value => {
+                                    chatSocket?.disconnect();
+                                    getConversationMsg(value)
+                                        .then(res => {
+                                            setChatMessages(res)
+                                            setSelectedConversation(value)
+                                        })
+                                }}
+                                menu={conversationItem => {
+                                    return {
+                                        items: [
+                                            { label: '重命名', key: 'rename', icon: <IconEdit /> },
+                                            { label: '删除', key: 'delete', icon: <IconDelete />, danger: true },
+                                        ],
+                                        onClick: item => {
+                                            switch (item.key) {
+                                                case 'rename':
+                                                    break;
+                                                case 'delete':
+                                                    break;
+                                                default:
+                                                    break;
+                                            }
+                                        },
+                                    }
+                                }}
+                            />
+                        </Space>
                     </Col>
                     <Col span={12} style={{ height: '100%', paddingRight: 10 }}>
                         <Chat
@@ -285,7 +318,7 @@ export default function LayoutPage() {
                                             setChatMessages([...newChatMessages]);
 
                                             if (newConversation) {
-                                                setConversation([{conversation_id: conversationId, summary: summary}, ...conversation])
+                                                setConversation([{conversation_id: conversationId, summary: summary, key: conversationId, label: summary}, ...conversation])
                                                 setSelectedConversation(conversationId)
                                             }
                                             return
@@ -300,7 +333,12 @@ export default function LayoutPage() {
                                             messages: newChatMessages.slice(0, -1),
                                             assistant_id: assistantId,
                                             conversation_id: selectedConversation,
-                                            model: selectedModel
+                                            model: selectedModel?.model_name,
+                                            llm_options: {
+                                                ...selectedModel?.llm_options,
+                                                base_url: selectedModel?.base_url || '',
+                                                apikey: selectedModel?.apikey || '',
+                                            }
                                         });
                                     });
 
@@ -329,36 +367,39 @@ export default function LayoutPage() {
                     <Col span={4} style={{height: '100%', paddingTop: 10}}>
                         <Row style={{height: 40, width: '100%'}}>
                             <Col span={5} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }} >
+                                <Text>模型操作</Text>
+                            </Col>
+                            <Col span={19} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start'}} >
+                                <ButtonGroup style={{ width: '100%' }}>
+                                    <Button > 新增模型 </Button>
+                                    <Button > 修改模型信息 </Button>
+                                </ButtonGroup>
+                            </Col>
+                        </Row>
+                        <Row style={{height: 40, width: '100%'}}>
+                            <Col span={5} style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }} >
                                 <Text>选择模型</Text>
                             </Col>
                             <Col span={19} style={{height: 40, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
                                 <Select
                                     style={{width: '95%'}}
-                                    value={selectedModel}
+                                    value={selectedModel?.model_name}
                                     onChange={(value) => {
-                                        setSelectedModel(value)
+                                        const modelDetail = modelList.find(item => item.model_name === value)
+                                        setSelectedModel(modelDetail)
                                     }}
+                                    optionList={modelList.map(item => ({...item, value: item?.model_name, label: item?.model_format_name, disabled: !item?.apikey}))}
                                 >
-                                    <Select.Option value={'glm-4-flash'}>GLM-4-Flash</Select.Option>
-                                    <Select.Option value={'gemini-2.0-flash-exp'}>Gemini 2.0-Flash-Exp</Select.Option>
-                                    <Select.Option value={'deepseek-v3-aliyun'} disabled>DeepSeek V3(阿里云)</Select.Option>
-                                    <Select.Option value={'deepseek-r1-aliyun'} disabled>DeepSeek R1(阿里云)</Select.Option>
-                                    <Select.Option value={'qwen2.5'}>通义千问2.5</Select.Option>
-                                    <Select.Option value={'deepseek_v3'}>DeepSeek V3(官方)</Select.Option>
                                 </Select>
                             </Col>
                         </Row>
                         <Row style={{height: 40, width: '100%', paddingTop: 5}}>
-                            <Col span={24}>{modelInfo?.[selectedModel] ?? '暂无介绍'}</Col>
-                            {/*TODO: 动态说明文案，动态模型，适配Markdown*/}
-                            {/*<Row>*/}
-                            {/*    <Col span={24}>*/}
-                            {/*        <MarkdownRender*/}
-                            {/*            raw={`免费的模型，可以前往<Text link={{href: '', target: '__blank'}}></Text>申请APIKEY使用`}*/}
-                            {/*            components={{...MarkdownRender.defaultComponents, Text: Text}}*/}
-                            {/*        />*/}
-                            {/*    </Col>*/}
-                            {/*</Row>*/}
+                            <Col span={24}>
+                                <MarkdownRender
+                                    raw={selectedModel?.description || "暂无描述"}
+                                    components={{...MarkdownRender.defaultComponents, Text: Text}}
+                                />
+                            </Col>
                         </Row>
                         {
                             selectedConversation && (
