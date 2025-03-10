@@ -1,7 +1,7 @@
 import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme } from 'antd';
-import {Toast} from '@douyinfe/semi-ui';
+import {Toast, MarkdownRender} from '@douyinfe/semi-ui';
 import { CopyOutlined, DeleteOutlined } from '@ant-design/icons';
-import {Bubble, Conversations} from "@ant-design/x";
+import {Bubble, Conversations, Sender} from "@ant-design/x";
 import {useEffect, useState, createContext, useContext} from "react";
 import requests from '../utils/requests'
 
@@ -29,7 +29,7 @@ function ConversationMenu() {
     return (
         <Flex style={{ height: '100%', width: '100%' }} vertical>
             <div style={{paddingLeft: 10, paddingTop: 12, paddingRight: 10}}>
-                <Button block >新增对话</Button>
+                <Button block >新对话</Button>
             </div>
             <div style={{paddingLeft: 10, paddingTop: 12, paddingRight: 10}}>
                 <Input placeholder='搜索对话' onChange={event => setSearchValue(event.target.value)} />
@@ -64,7 +64,7 @@ function ChatBox ({  }) {
 
     const [messages, setMessages] = useState([]);
     const [roleConfig, setRoleConfig] = useState({
-        assistant: { placement: 'start', avatar: {icon: <Avatar src='https://wxa.wxs.qq.com/wxad-design/yijie/phone-chat-icon-1.png' />}} , 
+        assistant: { placement: 'start', avatar: {icon: <Avatar src='https://wxa.wxs.qq.com/wxad-design/yijie/phone-chat-icon-1.png' />}} ,
         user: { placement: 'end', avatar: {icon: <Avatar src={selectedWechatBot?.info?.headImage} />}}
     })
 
@@ -98,16 +98,19 @@ function ChatBox ({  }) {
     }, [selectedWechatBot])
 
     return (
-        <Flex vertical gap="middle" style={{maxHeight: '100%', overflow: 'auto'}}>
+        <Flex vertical gap="middle" style={{height: '100%', overflow: 'auto'}} justify="space-between">
             <Bubble.List 
                 roles={roleConfig}
                 items={messages.map(item => {
-                    console.log(item)
                     return {
                         ...item,
-                        footer: <MessageTools messageItem={item} />
+                        footer: <MessageTools messageItem={item} />,
+                        messageRender: () => <MarkdownRender raw={item?.content} />
                     }
                 })}
+            />
+            <Sender
+
             />
         </Flex>
     )
@@ -242,8 +245,18 @@ export default function LayoutPage() {
                         <ConversationMenu />
                     </Flex>
                 </Sider>
-                <Content>
-                    <ChatBox />
+                <Content style={{paddingTop: '25px', paddingBottom: '25px'}}>
+                    <Row style={{height: '100%', width: '100%'}}>
+                        <Col span={6} style={{height: '100%'}}>
+
+                        </Col>
+                        <Col span={12} style={{height: '100%'}}>
+                            <ChatBox />
+                        </Col>
+                        <Col span={6} style={{height: '100%'}}>
+
+                        </Col>
+                    </Row>
                 </Content>
             </MainContext.Provider>
         </Layout>
