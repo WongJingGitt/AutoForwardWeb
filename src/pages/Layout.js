@@ -1,6 +1,6 @@
 import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme } from 'antd';
 import {Toast, MarkdownRender} from '@douyinfe/semi-ui';
-import { CopyOutlined, DeleteOutlined } from '@ant-design/icons';
+import { CopyOutlined, DeleteOutlined, WechatFilled, UserOutlined } from '@ant-design/icons';
 import {Bubble, Conversations, Sender} from "@ant-design/x";
 import {useEffect, useState, createContext, useContext} from "react";
 import requests from '../utils/requests'
@@ -64,8 +64,10 @@ function ChatBox ({  }) {
 
     const [messages, setMessages] = useState([]);
     const [roleConfig, setRoleConfig] = useState({
-        assistant: { placement: 'start', avatar: {icon: <Avatar src='https://wxa.wxs.qq.com/wxad-design/yijie/phone-chat-icon-1.png' />}} ,
-        user: { placement: 'end', avatar: {icon: <Avatar src={selectedWechatBot?.info?.headImage} />}}
+        assistant: { placement: 'start', avatar: {src: 'https://wxa.wxs.qq.com/wxad-design/yijie/phone-chat-icon-1.png', style: {background: '#00000000'}}} ,
+        user: { placement: 'end', avatar: {src: selectedWechatBot?.info?.headImage, style: {background: '#00000000'}}},
+        tool_call: {},
+        tool_result: {}
     })
 
     const {token} = theme.useToken();
@@ -94,18 +96,22 @@ function ChatBox ({  }) {
     }, [conversationId])
 
     useEffect(() => {
-        setRoleConfig({...roleConfig, user: { ...roleConfig.user, avatar: {icon: <Avatar src={selectedWechatBot?.info?.headImage} />} }})
+        setRoleConfig({...roleConfig, user: { ...roleConfig.user, avatar: {src: selectedWechatBot?.info?.headImage, style: {background: '#00000000'}} }})
     }, [selectedWechatBot])
 
     return (
         <Flex vertical gap="middle" style={{height: '100%', overflow: 'auto'}} justify="space-between">
             <Bubble.List 
+                style={{paddingLeft: 10, paddingRight: 10}}
                 roles={roleConfig}
                 items={messages.map(item => {
                     return {
                         ...item,
                         footer: <MessageTools messageItem={item} />,
-                        messageRender: () => <MarkdownRender raw={item?.content} />
+                        messageRender: () => {
+                            if (['user', 'assistant'].includes(item?.role)) return <MarkdownRender raw={item?.content} />
+                            return ''
+                        }
                     }
                 })}
             />
@@ -237,7 +243,7 @@ export default function LayoutPage() {
                                             <Avatar style={{cursor: 'pointer'}} size={60} src={selectedWechatBot?.info?.headImage} />
                                         </Popover>
                                     ) :(
-                                        <Avatar style={{cursor: 'pointer'}} size={60} src={selectedWechatBot?.info?.headImage} />
+                                        <Avatar style={{cursor: 'pointer'}} size={60} icon={<UserOutlined />} />
                                     )
                                 }
                             </Col>
