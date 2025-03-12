@@ -1,9 +1,10 @@
-import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse  } from 'antd';
+import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse, Select, Modal, Form, Radio } from 'antd';
 import {Toast, MarkdownRender} from '@douyinfe/semi-ui';
 import { CopyOutlined, DeleteOutlined, WechatFilled, UserOutlined } from '@ant-design/icons';
 import {Bubble, Conversations, Sender} from "@ant-design/x";
 import {useEffect, useState, createContext, useContext} from "react";
 import requests from '../utils/requests'
+import { icons } from 'antd/es/image/PreviewGroup';
 
 const MainContext = createContext({});
 
@@ -29,7 +30,7 @@ function ConversationMenu() {
     return (
         <Flex style={{ height: '100%', width: '100%' }} vertical>
             <div style={{paddingLeft: 10, paddingTop: 12, paddingRight: 10}}>
-                <Button block >新对话</Button>
+                <Button block color="primary" variant="outlined" >新对话</Button>
             </div>
             <div style={{paddingLeft: 10, paddingTop: 12, paddingRight: 10}}>
                 <Input placeholder='搜索对话' onChange={event => setSearchValue(event.target.value)} />
@@ -137,14 +138,197 @@ function ChatBox ({  }) {
     )
 }
 
+function ModelSelection() {
+    const [modelInfo, setModelInfo] = useState({ model_name: '', model_format_name: '', base_url: '', apikey: null,  description: ''});
+    const [optionType, setOptionType] = useState('add');
+    const {setSelectModel, selectModel, modelList, setModelList, baseModal} = useContext(MainContext);
+    const [apikeyList, setApikeyList] = useState([]);
+    
+    const { Text } = Typography;
+    const [ form ] = Form.useForm();
+    const getModels = () => {
+        return new Promise((resolve, reject) => {
+            requests('api/models', {}, 'GET')
+                .then(data => {
+                    setModelList(data?.data || []);
+                    resolve();
+                });
+        })
+    }
+
+    const getApikey = () => {
+        return new Promise((resolve, reject) => {
+            requests('api/apikeys', {}, 'GET')
+                .then(data => {
+                    setApikeyList(data?.data || []);
+                    resolve();
+                });
+        })
+    }
+
+    const addModel = () => {
+        // TODO: 需要根据选择操作动态更改弹窗中的表单组件，应该要把optionType写到Context里面才会生效。
+        baseModal.confirm({
+            title: `添加模型`,
+            content: (
+                <Form
+                    layout="vertical"
+                    name="addModelForm"
+                    form={form}
+                >   
+                    <Form.Item label="操作类型">
+                        <Radio.Group 
+                            optionType='button'
+                            buttonStyle='solid'
+                            // value={optionType}
+                            defaultValue={optionType}
+                            options={[{label: '新增', value: 'add'}, {label: '修改', value: 'update'}]}
+                            block 
+                            onChange={event => setOptionType(event.target.value)}
+                        />
+                    </Form.Item>
+                    <Form.Item label="模型名称" name="model_format_name" rules={[{ required: true, message: '请输入模型名称' }]}>
+                        <Input placeholder="请输入模型名称" defaultValue={modelInfo.model_format_name}/>
+                    </Form.Item>
+                    <Form.Item label="模型ID" name="model_name" rules={[{ required: true, message: '请输入模型ID' }]}>
+                        <Input placeholder="请输入模型I" defaultValue={modelInfo.model_name} />
+                    </Form.Item>
+                    <Form.Item label="模型地址" name="base_url" rules={[{ required: true, message: '请输入模型地址' }]}>
+                        <Input placeholder="请输入模型地址" defaultValue={modelInfo.base_url}  />
+                    </Form.Item>
+                    <Form.Item label="APIKEY" name="apikey">
+                        <Select 
+                            placeholder="请选择APIKEY" 
+                            defaultValue={modelInfo.apikey}
+                            allowClear
+                            options={apikeyList.map(item => ({...item, label: item.description, value: item.apikey_id}))}
+                        />
+                    </Form.Item>
+                    <Form.Item label="模型描述" name="description">
+                        <Input.TextArea placeholder="请输入模型描述" rows={4} style={{resize: 'none'}} defaultValue={modelInfo.description} />
+                    </Form.Item>
+                </Form>
+            ),
+            icon: null,
+            onOk () {
+                return new Promise((resolve, reject) => {
+                    form.validateFields()
+                        .then(value => {
+                            // requests('', value, 'POST')
+                        })
+                        .catch(err => {
+                            reject('请输入正确的信息');
+                        });
+                });
+            }
+        });
+    }
+
+    const addApikey = () => {
+        baseModal.confirm({
+            title: '添加apikey',
+            icon: null,
+            content: (
+                <Form
+                    form={form}
+                    layout="vertical"
+                    name='addApikey'
+                >
+                    <Form.Item
+                        label="APIKEY"
+                        name="apikey"
+                        rules={[{ required: true, message: '请输入apikey' }]}
+                    >
+                        <Input placeholder="请输入apikey" />
+                    </Form.Item>
+                    <Form.Item
+                        label="描述"
+                        name="description"
+                        rules={[{ required: true, message: "请输入1到20位字符。", min: 1, max: 20 }]}
+                    >
+                        <Input placeholder="请输入描述" />
+                    </Form.Item>
+                </Form>
+            ),
+            onOk () {
+                return new Promise((resolve, reject) => {
+                    form.validateFields()
+                        .then(values => {
+                            requests('api/model/apikey/add', values, 'POST')
+                                .then(res => {
+                                    if (res.code === 200) {
+                                        Toast.success('添加成功');
+                                        resolve();
+                                        return;
+                                    }
+                                    Toast.error(res.msg);
+                                    reject();
+                                })
+                        })
+                        .catch(info => {
+                            Toast.error('请填写必填项');
+                            reject('请填写必填项');
+                        });
+                })
+            }
+        })
+    }
+
+    useEffect(() => {
+        getModels()
+            .then(() => {
+                const firstModel = modelList?.find(item => item?.apikey);
+                setSelectModel(firstModel?.model_id || '')
+            });
+        getApikey();
+    }, [])
+
+    return (
+        <Flex vertical style={{width: '100%'}} gap={10}>
+            <Row justify="space-between">
+                <Col span={12} style={{padding: '0 10px'}}>
+                    <Button block color="primary" variant="outlined" onClick={() => addModel()}>模型配置</Button>
+                </Col>
+                <Col span={12} style={{padding: '0 10px'}}>
+                    <Button block color="primary" variant="outlined" onClick={() => addApikey()}>APIKEY配置</Button>
+                </Col>
+            </Row>
+            <Row style={{width: '100%'}}>
+                <Col span={24} style={{padding: '0 10px'}}>
+                    <Select 
+                        style={{width: '100%'}}
+                        prefix="使用模型"
+                        options={modelList?.map(item => ({...item, label: item.model_format_name, value: item.model_id, disabled: !item?.apikey}))}
+                        optionRender={props => {
+                            return <>
+                                <Text strong style={{paddingRight: 5}} disabled={!props.data?.apikey} >{props.label}</Text>
+                                <Text code disabled={!props.data?.apikey} style={{paddingRight: 5}}>{props.data.model_name}</Text>
+                                {!props.data?.apikey && <Text type="danger">未配置APIKEY</Text>}
+                            </>
+                        }}
+                    />
+                </Col>
+            </Row>
+            <Row>
+                <Col span={24} style={{padding: '0 10px'}}>
+                        123
+                </Col>
+            </Row>
+        </Flex>
+    )
+}
+
 export default function LayoutPage() {
     const [ selectedWechatBot, setSelectedWechatBot ] = useState({});
     const [ wechatBotList, setWechatBotList ] = useState([]);
     const [ isLogin, setIsLogin ] = useState(false);
     const [ conversationId, setConversationId ] = useState('');
+    const [ modelList, setModelList ] = useState([]);
+    const [ selectModel, setSelectModel ] = useState('');
 
     const { Sider, Content } = Layout;
     const { Text } = Typography;
+    const [baseModal, modelContextHolder] = Modal.useModal();
 
 
     const getBotList = () => {
@@ -185,7 +369,7 @@ export default function LayoutPage() {
             })
     }
 
-    const LoginButton = () => <Button loading={isLogin} onClick={login} > 登录新账号 </Button>
+    const LoginButton = () => <Button loading={isLogin} onClick={login} type='primary' > 登录新账号 </Button>
 
     useEffect(() => {
         getBotList()
@@ -199,13 +383,18 @@ export default function LayoutPage() {
 
     return (
         <Layout style={{ height: '100vh', width: '100vw' }}>
-            <MainContext.Provider value={{ selectedWechatBot, setSelectedWechatBot, conversationId, setConversationId }}>
+            <MainContext.Provider 
+                value={{ 
+                    selectedWechatBot, setSelectedWechatBot, conversationId, setConversationId,
+                    modelList, setModelList, selectModel, setSelectModel, baseModal, modelContextHolder
+                }}
+            >
                 <Sider
                     style={{ height: '100%', margin: 0 }}
                     theme="light"
                     width={260}
                 >
-                    <Flex vertical={true}>
+                    <Flex vertical>
                         <Row style={{ width: '100%', height: 65 }}>
                             <Col flex="auto" style={{ padding: '10px 0px 0px 0px', width: 'calc(100% - 85px)', height: '100%', display: 'flex', textAlign: 'center', alignItems: 'center', justifyContent: 'center' }}>
                                 {
@@ -275,10 +464,13 @@ export default function LayoutPage() {
                             <ChatBox />
                         </Col>
                         <Col span={6} style={{height: '100%'}}>
-
+                            <Flex vertical>
+                                <ModelSelection />
+                            </Flex>
                         </Col>
                     </Row>
                 </Content>
+                {modelContextHolder}
             </MainContext.Provider>
         </Layout>
     )
