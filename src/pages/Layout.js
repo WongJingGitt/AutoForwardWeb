@@ -1,4 +1,4 @@
-import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme } from 'antd';
+import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse  } from 'antd';
 import {Toast, MarkdownRender} from '@douyinfe/semi-ui';
 import { CopyOutlined, DeleteOutlined, WechatFilled, UserOutlined } from '@ant-design/icons';
 import {Bubble, Conversations, Sender} from "@ant-design/x";
@@ -66,8 +66,7 @@ function ChatBox ({  }) {
     const [roleConfig, setRoleConfig] = useState({
         assistant: { placement: 'start', avatar: {src: 'https://wxa.wxs.qq.com/wxad-design/yijie/phone-chat-icon-1.png', style: {background: '#00000000'}}} ,
         user: { placement: 'end', avatar: {src: selectedWechatBot?.info?.headImage, style: {background: '#00000000'}}},
-        tool_call: {},
-        tool_result: {}
+        tools: {variant: 'borderless', placement: 'start'}
     })
 
     const {token} = theme.useToken();
@@ -90,7 +89,6 @@ function ChatBox ({  }) {
     }
 
     
-    
     useEffect(() => {
         getConversationMsg(conversationId);
     }, [conversationId])
@@ -105,12 +103,29 @@ function ChatBox ({  }) {
                 style={{paddingLeft: 10, paddingRight: 10}}
                 roles={roleConfig}
                 items={messages.map(item => {
+                    const isToolsMessage = !['user', 'assistant'].includes(item?.role)
                     return {
                         ...item,
-                        footer: <MessageTools messageItem={item} />,
+                        footer: isToolsMessage ? null: <MessageTools messageItem={item} /> ,
                         messageRender: () => {
-                            if (['user', 'assistant'].includes(item?.role)) return <MarkdownRender raw={item?.content} />
-                            return ''
+                            if (!isToolsMessage) return <MarkdownRender raw={item?.content} />
+                            const wechatMessageConfig = JSON.parse(item?.wechat_message_config)
+                            if (wechatMessageConfig.type === 'tool_call') {
+                                return <>
+                                    <MarkdownRender raw={item?.content || ''}/>
+                                    <Collapse 
+                                        ghost 
+                                        items={wechatMessageConfig?.tools?.map(toolItem => ({ key: toolItem?.call_id, label: `调用工具函数：${toolItem?.tool_name}`, children: <MarkdownRender raw={`**参数：**\n\n\`\`\`json\n${toolItem?.parameters}\n\`\`\``} /> }))}  
+                                    />
+                                </>
+                            }
+                            if (wechatMessageConfig.type === 'tool_result') {
+                                return <Collapse 
+                                    ghost
+                                    items={[{ key: wechatMessageConfig?.tools?.call_id, label: `工具调用结果：${wechatMessageConfig?.tools?.tool_name}`, children: <MarkdownRender raw={`**结果：**\n\n\`\`\`json\n${wechatMessageConfig?.tools?.result}\n\`\`\``} /> }]}
+                                />
+                            }
+
                         }
                     }
                 })}
