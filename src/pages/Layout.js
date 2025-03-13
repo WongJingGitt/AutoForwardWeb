@@ -1,6 +1,6 @@
-import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse, Select, Modal, Form, Radio } from 'antd';
+import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse, Select, Modal, Form, Radio, Tooltip, Tabs } from 'antd';
 import {Toast, MarkdownRender} from '@douyinfe/semi-ui';
-import { CopyOutlined, DeleteOutlined, WechatFilled, UserOutlined } from '@ant-design/icons';
+import { CopyOutlined, DeleteOutlined, UserOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
 import {Bubble, Conversations, Sender} from "@ant-design/x";
 import {useEffect, useState, createContext, useContext} from "react";
 import requests from '../utils/requests'
@@ -9,16 +9,10 @@ import { icons } from 'antd/es/image/PreviewGroup';
 const MainContext = createContext({});
 
 function ConversationMenu() {
-    const [conversations, setConversations] = useState([]);
+    
     const [searchValue, setSearchValue] = useState('');
 
-    const {conversationId, setConversationId, selectedWechatBot} = useContext(MainContext);
-
-    const getConversations = async () => {
-        const response = await requests('api/conversations/list', { port: selectedWechatBot.port })
-        setConversations(response?.data?.map(item => ({...item, key: item?.conversation_id, label: item?.summary})) || [])
-        return response?.data || [];
-    }
+    const {conversationId, setConversationId, selectedWechatBot, conversations, getConversations} = useContext(MainContext);
 
     useEffect(() => {
         if (selectedWechatBot?.port) {
@@ -109,19 +103,20 @@ function ChatBox ({  }) {
                         ...item,
                         footer: isToolsMessage ? null: <MessageTools messageItem={item} /> ,
                         messageRender: () => {
-                            if (!isToolsMessage) return <MarkdownRender raw={item?.content} />
+                            if (!isToolsMessage) return <MarkdownRender raw={item?.content} style={{ maxWidth: 'calc(100% - 42px)' }} />
                             const wechatMessageConfig = JSON.parse(item?.wechat_message_config)
                             if (wechatMessageConfig.type === 'tool_call') {
-                                return <>
-                                    <MarkdownRender raw={item?.content || ''}/>
+                                return <div style={{maxWidth: 'calc(100% - 42px)'}}>
+                                    <MarkdownRender raw={item?.content || ''} />
                                     <Collapse 
                                         ghost 
                                         items={wechatMessageConfig?.tools?.map(toolItem => ({ key: toolItem?.call_id, label: `调用工具函数：${toolItem?.tool_name}`, children: <MarkdownRender raw={`**参数：**\n\n\`\`\`json\n${toolItem?.parameters}\n\`\`\``} /> }))}  
                                     />
-                                </>
+                                </div>
                             }
                             if (wechatMessageConfig.type === 'tool_result') {
                                 return <Collapse 
+                                    style={{maxWidth: 'calc(100% - 42px)'}}
                                     ghost
                                     items={[{ key: wechatMessageConfig?.tools?.call_id, label: `工具调用结果：${wechatMessageConfig?.tools?.tool_name}`, children: <MarkdownRender raw={`**结果：**\n\n\`\`\`json\n${wechatMessageConfig?.tools?.result}\n\`\`\``} /> }]}
                                 />
@@ -138,11 +133,14 @@ function ChatBox ({  }) {
     )
 }
 
+// TODO APIKEY删除+APIKEY修改+Model删除逻辑待补充
 function ModelSelection() {
-    const [modelInfo, setModelInfo] = useState({ model_name: '', model_format_name: '', base_url: '', apikey: null,  description: ''});
     const [optionType, setOptionType] = useState('add');
     const {setSelectModel, selectModel, modelList, setModelList, baseModal} = useContext(MainContext);
     const [apikeyList, setApikeyList] = useState([]);
+    const [modal, setModal] = useState(null);
+    const [updateModel, setUpdateModel] = useState('');
+    const [updateField, setUpdateField] = useState('model_format_name');
     
     const { Text } = Typography;
     const [ form ] = Form.useForm();
@@ -151,7 +149,7 @@ function ModelSelection() {
             requests('api/models', {}, 'GET')
                 .then(data => {
                     setModelList(data?.data || []);
-                    resolve();
+                    resolve(data?.data);
                 });
         })
     }
@@ -161,60 +159,161 @@ function ModelSelection() {
             requests('api/apikeys', {}, 'GET')
                 .then(data => {
                     setApikeyList(data?.data || []);
-                    resolve();
+                    resolve(data?.data);
                 });
         })
     }
-
-    const addModel = () => {
-        // TODO: 需要根据选择操作动态更改弹窗中的表单组件，应该要把optionType写到Context里面才会生效。
-        baseModal.confirm({
-            title: `添加模型`,
-            content: (
-                <Form
-                    layout="vertical"
-                    name="addModelForm"
-                    form={form}
-                >   
-                    <Form.Item label="操作类型">
-                        <Radio.Group 
-                            optionType='button'
-                            buttonStyle='solid'
-                            // value={optionType}
-                            defaultValue={optionType}
-                            options={[{label: '新增', value: 'add'}, {label: '修改', value: 'update'}]}
-                            block 
-                            onChange={event => setOptionType(event.target.value)}
-                        />
+    
+    const AddForm = () => {
+        return (
+            <Form
+                layout="vertical"
+                name="addModelForm"
+                form={form}
+            >   
+                <Form.Item label="操作类型" name="optionType" initialValue="add">
+                    <Radio.Group 
+                        optionType='button'
+                        buttonStyle='solid'
+                        value={optionType}
+                        defaultValue={optionType}
+                        options={[{label: '新增模型', value: 'add'}, {label: '修改模型', value: 'update'}]}
+                        block 
+                        onChange={event => setOptionType(event.target.value)}
+                    />
+                </Form.Item>
+                <div style={{ overflow: 'auto', maxHeight: '50vh', width: '100%', paddingRight: 10 }}>
+                    <Form.Item label="模型名称" name="model_format_name" rules={[{ required: true, message: '请输入模型名称' }]} extra="模型名称: 指你对模型的自定义名称，仅用作展示。" >
+                        <Input placeholder="请输入模型名称" />
                     </Form.Item>
-                    <Form.Item label="模型名称" name="model_format_name" rules={[{ required: true, message: '请输入模型名称' }]}>
-                        <Input placeholder="请输入模型名称" defaultValue={modelInfo.model_format_name}/>
+                    <Form.Item label="模型ID" name="model_name" rules={[{ required: true, message: '请输入模型ID' }]} extra="模型ID: 指模型服务商提供的模型ID，如：gpt-3.5-turbo">
+                        <Input placeholder="请输入模型ID"  />
                     </Form.Item>
-                    <Form.Item label="模型ID" name="model_name" rules={[{ required: true, message: '请输入模型ID' }]}>
-                        <Input placeholder="请输入模型I" defaultValue={modelInfo.model_name} />
+                    <Form.Item label="模型地址" name="base_url" rules={[{ required: true, message: '请输入模型地址' }]} extra="模型地址: 指模型服务商提供的模型地址，如：https://api.openai.com/v1/chat/completions">
+                        <Input placeholder="请输入模型地址" />
                     </Form.Item>
-                    <Form.Item label="模型地址" name="base_url" rules={[{ required: true, message: '请输入模型地址' }]}>
-                        <Input placeholder="请输入模型地址" defaultValue={modelInfo.base_url}  />
-                    </Form.Item>
-                    <Form.Item label="APIKEY" name="apikey">
+                    <Form.Item label="APIKEY" name="apikey_id" extra="APIKEY: 指模型服务商提供的APIKEY">
                         <Select 
                             placeholder="请选择APIKEY" 
-                            defaultValue={modelInfo.apikey}
                             allowClear
                             options={apikeyList.map(item => ({...item, label: item.description, value: item.apikey_id}))}
                         />
                     </Form.Item>
-                    <Form.Item label="模型描述" name="description">
-                        <Input.TextArea placeholder="请输入模型描述" rows={4} style={{resize: 'none'}} defaultValue={modelInfo.description} />
+                    <Form.Item label="模型描述" name="description" extra="模型描述: 对模型的描述，仅用作展示。">
+                        <Input.TextArea placeholder="请输入模型描述" rows={4} style={{resize: 'none'}}  />
                     </Form.Item>
-                </Form>
+                </div>
+            </Form>
+        )
+    }
+
+    const UpdateForm = () => {
+        let valueItem;
+        if (updateField === 'apikey_id') {
+            valueItem =  <Select 
+                placeholder="请选择APIKEY" 
+                allowClear
+                options={apikeyList.map(item => ({...item, label: item.description, value: item.apikey_id}))}
+            />
+        }
+        else if (updateField === 'description') {
+            valueItem = <Input.TextArea placeholder="请输入模型描述" rows={4} style={{resize: 'none'}} />
+        }
+        else {
+            valueItem = <Input placeholder="请输入修改的值" />
+        };
+
+        return (
+            <Form
+                layout="vertical"
+                name="updateModelForm"
+                form={form}
+            >
+                <Form.Item label="操作类型" name="optionType" initialValue={optionType}>
+                    <Radio.Group 
+                        optionType='button'
+                        buttonStyle='solid'
+                        value={optionType}
+                        options={[{label: '新增模型', value: 'add'}, {label: '修改模型', value: 'update'}]}
+                        block 
+                        onChange={event => setOptionType(event.target.value)}
+                    />
+                </Form.Item>
+                <Form.Item label="选择模型" name="model_id" rules={[{ required: true, message: '请选择模型' }]} initialValue={updateModel}>
+                    <Select 
+                        placeholder="请选择模型" 
+                        options={modelList.map(item => ({...item, label: item.model_format_name, value: item.model_id}))}
+                        optionRender={props => {
+                            return <>
+                                <Text strong style={{paddingRight: 5}} >{props.label}</Text>
+                                <Text code style={{paddingRight: 5}}>{props.data.model_name}</Text>
+                            </>
+                        }}
+                        labelRender={({label, value}) => <Text strong style={{paddingLeft: 10}} >{label}</Text>}
+                        onChange={value => {
+                            setUpdateModel(value);
+                        }}
+                    />
+                </Form.Item>
+                <Form.Item label="修改的字段" name="field" rules={[{ required: true, message: '请选择要修改的字段' }]} initialValue="model_format_name">
+                    <Select
+                        placeholder="请选择要修改的字段" 
+                        options={[
+                            {label: '模型名称', value: 'model_format_name'},
+                            {label: '模型ID', value: 'model_name'},
+                            {label: '模型地址', value: 'base_url'},
+                            {label: 'APIKEY', value: 'apikey_id'},
+                            {label: '模型描述', value: 'description'},
+                        ]}
+                        defaultValue={updateField}
+                        labelRender={({label, value}) => <Text strong style={{paddingLeft: 10}} >{label}</Text>}
+                        onChange={value => setUpdateField(value)}
+                    />
+                </Form.Item>
+                <Form.Item label="修改的值" name="value" rules={[{ required: true, message: '请输入要修改的值' }]} >
+                    {valueItem}
+                </Form.Item>
+            </Form>
+        )
+    }
+
+    const modelConfigModal = () => {
+        const _modal = baseModal.confirm({
+            title: '新增模型',
+            content: (
+                optionType === 'add' ? <AddForm /> : <UpdateForm />
             ),
             icon: null,
             onOk () {
                 return new Promise((resolve, reject) => {
                     form.validateFields()
                         .then(value => {
-                            // requests('', value, 'POST')
+                            if (value?.optionType === 'add') {
+                                delete value.optionType;
+                                requests('api/model/model/add', value, 'POST')
+                                    .then(res => {
+                                        if (res.code === 200) {
+                                            getApikey();
+                                            getModels();
+                                            Toast.success('新增成功');
+                                            resolve();
+                                        }
+                                    })
+                            }else if (value?.optionType === 'update') {
+                                delete value.optionType;
+                                requests('api/model/update', value, 'PUT')
+                                    .then(res => {
+                                        if (res.code === 200) {
+                                            getApikey();
+                                            getModels();
+                                            Toast.success('修改成功');
+                                            resolve();
+                                        }
+                                    })
+                            }else {
+                                reject('请选择操作类型');
+                            }
+                            resolve();
                         })
                         .catch(err => {
                             reject('请输入正确的信息');
@@ -222,11 +321,12 @@ function ModelSelection() {
                 });
             }
         });
+        setModal(_modal);
     }
 
     const addApikey = () => {
         baseModal.confirm({
-            title: '添加apikey',
+            title: '添加APIKEY',
             icon: null,
             content: (
                 <Form
@@ -258,6 +358,8 @@ function ModelSelection() {
                                 .then(res => {
                                     if (res.code === 200) {
                                         Toast.success('添加成功');
+                                        getApikey();
+                                        getModels();
                                         resolve();
                                         return;
                                     }
@@ -274,20 +376,42 @@ function ModelSelection() {
         })
     }
 
+    const modelInfoRender = () => {
+        const info = modelList?.find(item => item.model_id === selectModel);
+        try {
+            if (!info?.description) return <Text>暂无描述</Text>
+            return <MarkdownRender raw={info?.description} />
+        }catch (error) {
+            return <Text>{info}</Text>
+        }
+    }
+
+    const changeModel = modelId => {
+        setSelectModel(modelId);
+        setUpdateModel(modelId);
+    }
+
     useEffect(() => {
         getModels()
-            .then(() => {
-                const firstModel = modelList?.find(item => item?.apikey);
-                setSelectModel(firstModel?.model_id || '')
+            .then(models => {
+                const firstModel = models?.find(item => item?.apikey_id);
+                changeModel(firstModel?.model_id);
             });
         getApikey();
     }, [])
+
+    useEffect(() => {
+        modal?.update({
+            title: optionType === 'add' ? '新增模型' : '修改模型',
+            content: optionType === 'add' ? <AddForm /> : <UpdateForm />
+        })
+    }, [optionType, updateField, updateModel])
 
     return (
         <Flex vertical style={{width: '100%'}} gap={10}>
             <Row justify="space-between">
                 <Col span={12} style={{padding: '0 10px'}}>
-                    <Button block color="primary" variant="outlined" onClick={() => addModel()}>模型配置</Button>
+                    <Button block color="primary" variant="outlined" onClick={() => modelConfigModal()}>模型配置</Button>
                 </Col>
                 <Col span={12} style={{padding: '0 10px'}}>
                     <Button block color="primary" variant="outlined" onClick={() => addApikey()}>APIKEY配置</Button>
@@ -298,20 +422,23 @@ function ModelSelection() {
                     <Select 
                         style={{width: '100%'}}
                         prefix="使用模型"
-                        options={modelList?.map(item => ({...item, label: item.model_format_name, value: item.model_id, disabled: !item?.apikey}))}
+                        value={selectModel}
+                        options={modelList?.map(item => ({...item, label: item.model_format_name, value: item.model_id, disabled: !item?.apikey_id}))}
                         optionRender={props => {
-                            return <>
-                                <Text strong style={{paddingRight: 5}} disabled={!props.data?.apikey} >{props.label}</Text>
-                                <Text code disabled={!props.data?.apikey} style={{paddingRight: 5}}>{props.data.model_name}</Text>
-                                {!props.data?.apikey && <Text type="danger">未配置APIKEY</Text>}
-                            </>
+                            // TODO 模型的禁用逻辑不应该放在这里，默认没有APIKEY，需要放开选中展示描述中的提示
+                            return <Tooltip style={{width: '100%'}} title={!props.data?.apikey_id && <Text type="danger">未配置APIKEY</Text>} >
+                                    <Text strong style={{paddingRight: 5}} disabled={!props.data?.apikey_id} >{props.label}</Text>
+                                    <Text code disabled={!props.data?.apikey_id} style={{paddingRight: 5}}>{props.data.model_name}</Text>
+                                </Tooltip>
                         }}
+                        labelRender={({label, value}) => <Text strong style={{paddingLeft: 10}} >{label}</Text>}
+                        onChange={changeModel}
                     />
                 </Col>
             </Row>
             <Row>
                 <Col span={24} style={{padding: '0 10px'}}>
-                        123
+                    {modelInfoRender()}
                 </Col>
             </Row>
         </Flex>
@@ -325,11 +452,18 @@ export default function LayoutPage() {
     const [ conversationId, setConversationId ] = useState('');
     const [ modelList, setModelList ] = useState([]);
     const [ selectModel, setSelectModel ] = useState('');
+    const [conversations, setConversations] = useState([]);
 
     const { Sider, Content } = Layout;
     const { Text } = Typography;
     const [baseModal, modelContextHolder] = Modal.useModal();
 
+
+    const getConversations = async () => {
+        const response = await requests('api/conversations/list', { port: selectedWechatBot.port })
+        setConversations(response?.data?.map(item => ({...item, key: item?.conversation_id, label: item?.summary})) || [])
+        return response?.data || [];
+    }
 
     const getBotList = () => {
         return new Promise((resolve, reject) => {
@@ -386,7 +520,8 @@ export default function LayoutPage() {
             <MainContext.Provider 
                 value={{ 
                     selectedWechatBot, setSelectedWechatBot, conversationId, setConversationId,
-                    modelList, setModelList, selectModel, setSelectModel, baseModal, modelContextHolder
+                    modelList, setModelList, selectModel, setSelectModel, baseModal, modelContextHolder,
+                    getConversations, conversations, setConversations
                 }}
             >
                 <Sider
