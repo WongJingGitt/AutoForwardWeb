@@ -9,6 +9,8 @@
     "antd": "^5.24.3",
     "axios": "^1.7.9",
     "cra-template": "1.2.0",
+    "dom-to-image": "^2.6.0",
+    "html2canvas": "^1.4.1",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-scripts": "5.0.1",
