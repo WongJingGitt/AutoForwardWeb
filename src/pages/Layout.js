@@ -1,4 +1,4 @@
-import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse, Select, Modal, Form, Radio, Tooltip, Popconfirm } from 'antd';
+import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse, Select, Modal, Form, Radio, Tooltip, Popconfirm, Image  } from 'antd';
 import {Toast, MarkdownRender} from '@douyinfe/semi-ui';
 import { CopyOutlined, DeleteFilled, DeleteOutlined, UserOutlined, ExportOutlined } from '@ant-design/icons';
 import {Bubble, Conversations, Sender, Suggestion} from "@ant-design/x";
@@ -54,6 +54,7 @@ function ChatBox () {
     const {conversationId, selectedWechatBot, isSending, setIsSending, selectModel, getConversations, setConversationId, messages, setMessages, changedField, setSelectModel, modelList} = useContext(MainContext);
     const [inputValue, setInputValue] = useState('');
     const [abortController, setAbortController] = useState(null);
+    const [allSuggestions, setAllSuggestions] = useState([]);
     const MessageTools = ({messageItem, index}) => {
         const copyMessage = () => {
             window.navigator.clipboard.writeText(messageItem.content);
@@ -170,6 +171,7 @@ function ChatBox () {
         }
     }
 
+    // TODO: 考虑把模板Prompt存到Github io, 实时联网更新
     const suggestionItem = useMemo(() => {
         return [
             {
@@ -254,6 +256,22 @@ function ChatBox () {
         setRoleConfig(prevMessages => ({...prevMessages, user: { ...prevMessages.user, avatar: {src: selectedWechatBot?.info?.headImage, style: {background: '#00000000'}} }}))
     }, [selectedWechatBot])
 
+    useEffect(() => {
+        fetch(`https://wongjinggitt.github.io/public/webot_suggestion.json?time=${(new Date()).getTime()}`, {method: 'GET'})
+            .then(response => {
+                if (!response.ok) {
+                    setAllSuggestions(suggestionItem);
+                }
+                return response.json()
+            })
+            .then(data => {
+                setAllSuggestions(data);
+            })
+            .catch(error => {
+                setAllSuggestions(suggestionItem);
+            })
+    }, [])
+
     return (
         <Flex vertical gap="middle" style={{height: '100%', overflow: 'auto'}} justify="space-between">
             <Bubble.List 
@@ -290,7 +308,7 @@ function ChatBox () {
                 })}
             />
             <Suggestion
-                items={suggestionItem}
+                items={allSuggestions}
                 onSelect={value => setInputValue(value)}
             >
                 {
@@ -334,6 +352,7 @@ function ModelSelection() {
     const [modal, setModal] = useState(null);
     const [updateModel, setUpdateModel] = useState('');
     const [updateField, setUpdateField] = useState('model_format_name');
+    const [webotInfo, setWebotInfo] = useState('');
     
     const { Text } = Typography;
     const [ form ] = Form.useForm();
@@ -701,6 +720,14 @@ function ModelSelection() {
         setUpdateModel(modelId);
     }
 
+    const getInfo = () => {
+        fetch(`https://wongjinggitt.github.io/public/webot_info.json?time=${(new Date()).getTime()}`, { method: 'GET' })
+            .then(response => response.json())
+            .then(data => {
+                setWebotInfo(data?.webot_info_markdown)
+            })
+    }
+
     useEffect(() => {
         getModels()
             .then(models => {
@@ -708,6 +735,7 @@ function ModelSelection() {
                 changeModel(firstModel?.model_id);
             });
         getApikey();
+        getInfo();
     }, [])
 
     useEffect(() => {
@@ -726,7 +754,7 @@ function ModelSelection() {
     }, [apikeyOptionType, apikeyList])
 
     return (
-        <Flex vertical style={{width: '100%'}} gap={10}>
+        <Flex vertical style={{width: '100%', height: '100%'}} gap={10}>
             <Row justify="space-between">
                 <Col span={12} style={{padding: '0 10px'}}>
                     <Button block color="primary" variant="outlined" onClick={() => modelConfigModal()}>模型配置</Button>
@@ -766,31 +794,10 @@ function ModelSelection() {
                     />
                 </Col>
             </Row>
-            <Row>
-                <Col span={24} style={{padding: '0 10px'}}>
+            <Row style={{maxHeight: '85%', overflowY: 'auto'}}>
+                <Col span={24} style={{padding: '0 10px', height: '100%'}}>
                     {modelInfoRender()}
-                    <Typography style={{paddingTop: 10}}>
-                        <Typography.Text>使用小助手总结聊天记录时，</Typography.Text>
-                        <Typography.Text type='warning'>建议单次不要总结超过1周的聊天</Typography.Text>
-                        <Typography.Paragraph>大多数AI单次读取的文本有上限，读取太长的聊天会被截断。</Typography.Paragraph>
-                        <Typography.Paragraph>
-                            若是想要总结更长的聊天记录建议去<Typography.Link href='https://yuanqi.tencent.com/my-creation/agent' target='_blank'>腾讯元器</Typography.Link>
-                            创建知识库，上传聊天记录文件，然后创建元宝智能体使用（元宝和元器目前都处于免费状态并且可以白嫖DeepSeek R1深度思考）。<Typography.Link href="https://docs.qq.com/aio/p/scxmsn78nzsuj64?p=LyUhXC9azxBeh7GJ0TtA9SG" target='_blank'>元器使用教程</Typography.Link>
-                        </Typography.Paragraph>
-                        <Typography.Paragraph>
-                            群聊报告总结仅供娱乐，AI读取数据有时会出现幻觉，所以内容可能会有细微偏差（取决于模型参数。）  
-                        </Typography.Paragraph>
-                        <Typography.Paragraph>
-                            <ul>
-                                <li>免费模型：个人推荐使用免费的谷歌Gemini 2.0 Flash，算是效果比较好的模型，但是需要翻墙。</li>
-                                <li>收费模型：火山引擎的DeepSeek V3</li>
-                            </ul>
-                            添加第三方模型时，请务必添加支持Function Call的模型，否则无法使用。
-                        </Typography.Paragraph>
-                        <Typography.Paragraph type='danger'>
-                        2025/3/15: 目前DeepSeek V3偶尔会出现无限调用工具函数，不出结果的情况，这是官方的BUG，请等待官方修复，可以暂时用其他的模型代替。
-                        </Typography.Paragraph>
-                    </Typography>
+                    <MarkdownRender raw={webotInfo} format='md'  style={{paddingTop: 10}}/>
                 </Col>
             </Row>
         </Flex>
@@ -1004,7 +1011,7 @@ export default function LayoutPage() {
                             <ChatBox />
                         </Col>
                         <Col span={6} style={{height: '100%'}}>
-                            <Flex vertical>
+                            <Flex vertical style={{height: '100%'}}>
                                 <ModelSelection />
                             </Flex>
                         </Col>
