@@ -214,16 +214,17 @@ function ChatBox () {
     }, [])
 
     const handleCapture = index => {
-        const elem = document.querySelector(`.webot-message-content-${index}`)
+        let elem = document.querySelector(`.webot-message-content-${index}`)
+        elem = elem.parentElement
         if (!elem) {
             Toast.error('找不到元素,导出失败');
             return
         };
-        console.log(elem)
-        
-        html2canvas(elem)
-          .then(function (canvas ) {
-            console.log(canvas);
+        const options = {
+            backgroundColor: 'rgb(231, 231, 231)', 
+        }
+        html2canvas(elem, options)
+            .then(function (canvas ) {
             const imgData = canvas.toDataURL('image/png');
             const link = document.createElement('a');
             link.download = 'my-image.png';
@@ -231,11 +232,11 @@ function ChatBox () {
             link.click();
             Toast.success('导出成功');
             link.remove();
-          })
-          .catch(function (error) {
-            console.error('发生错误:', error);
-          });
-      };
+            })
+            .catch(function (error) {
+                console.error('发生错误:', error);
+            });
+    };
 
     useEffect(() => {
         getConversationMsg(conversationId)
