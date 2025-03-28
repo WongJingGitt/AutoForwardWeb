@@ -857,12 +857,16 @@ export default function LayoutPage() {
                                         .then(res => {
                                             if (res.code === 200) {
                                                 Toast.success('删除成功');
-                                                resolve();
                                                 getConversations();
                                                 setConversationId('');
                                                 setMessages([]);
                                             }
                                         })
+                                        .finally(async () => {
+                                            const text = await navigator.clipboard.readText();
+                                            console.log(text)
+                                            resolve(text);
+                                        });
                                 })
                             }
                         }
