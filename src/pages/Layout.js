@@ -1,12 +1,31 @@
-import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse, Select, Modal, Form, Radio, Tooltip, Popconfirm, Image  } from 'antd';
-import {Toast, MarkdownRender} from '@douyinfe/semi-ui';
+import {Layout, Flex, Row, Col, Avatar, Typography, Button, Popover, List, Input, Space, theme, Collapse, Select, Modal, Form, Radio, Tooltip, Popconfirm  } from 'antd';
+import {Toast, MarkdownRender, Divider} from '@douyinfe/semi-ui';
 import { CopyOutlined, DeleteFilled, DeleteOutlined, UserOutlined, ExportOutlined } from '@ant-design/icons';
 import {Bubble, Conversations, Sender, Suggestion} from "@ant-design/x";
 import {useEffect, useState, createContext, useContext, useCallback, useMemo, useRef} from "react";
 import requests from '../utils/requests'
 import html2canvas from 'html2canvas';
+import "./layout.css";
 
 const MainContext = createContext({});
+const MARKDOWN_COMPONENTS = {
+    blockquote: ({children}) => {
+        const style = {
+            background: 'rgba(var(--semi-grey-1), 1)',
+            paddingTop: 10,
+            paddingBottom: 10,
+            paddingLeft: 10,
+            paddingRight: 10,
+            borderRadius: 3,
+            width: '100%',
+            borderLeft: '5px solid rgba(var(--semi-grey-3), 1)',
+            margin: 0
+        };
+        return <blockquote style={style}>{children}</blockquote>
+    },
+    li: ({children}) => <li style={{ paddingBottom: 10 }}>{children}</li>,
+    hr: ({children}) => <Divider margin={12} style={{backgroundColor: 'rgba(var(--semi-grey-3)'}} >{children}</Divider>,
+}
 
 function ConversationMenu() {
     
@@ -281,17 +300,21 @@ function ChatBox () {
                 items={messages.map((item, index) => {
                     const isToolsMessage = !['user', 'assistant'].includes(item?.role)
                     const wechatMessageConfig = JSON.parse(item?.wechat_message_config || '{"type": ""}')
+                    let headerName;
+                    if (!isToolsMessage) headerName = item?.role === 'user' ? <Typography.Text strong>{selectedWechatBot?.info?.name}</Typography.Text> : <Typography.Text strong>微宝</Typography.Text>;
                     return {
                         ...item,
+                        styles: {content: { maxWidth: '95%' }},
+                        header: headerName,
                         footer: isToolsMessage ? null: <MessageTools messageItem={item} index={index} /> ,
                         messageRender: () => {
-                            if (!isToolsMessage) return wechatMessageConfig?.type === 'error' ? <Typography.Text type='danger'>{item?.content}</Typography.Text> : <MarkdownRender raw={item?.content} format="md" className={`webot-message-content-${index}`} />
+                            if (!isToolsMessage) return wechatMessageConfig?.type === 'error' ? <Typography.Text type='danger'>{item?.content}</Typography.Text> : <MarkdownRender components={MARKDOWN_COMPONENTS} raw={item?.content} format="md" className={`webot-message-content-${index}`} />
                             if (wechatMessageConfig.type === 'tool_call') {
                                 return <div style={{}}>
-                                    <MarkdownRender raw={item?.content || ''} format="md" />
+                                    <MarkdownRender components={MARKDOWN_COMPONENTS} raw={item?.content || ''} format="md" />
                                     <Collapse 
                                         ghost 
-                                        items={wechatMessageConfig?.tools?.map(toolItem => ({ key: toolItem?.call_id, label: `调用工具函数：${toolItem?.tool_name}`, children: <MarkdownRender raw={`**参数：**\n\n\`\`\`json\n${toolItem?.parameters}\n\`\`\``} /> }))}  
+                                        items={wechatMessageConfig?.tools?.map(toolItem => ({ key: toolItem?.call_id, label: `调用工具函数：${toolItem?.tool_name}`, children: <MarkdownRender components={MARKDOWN_COMPONENTS} raw={`**参数：**\n\n\`\`\`json\n${toolItem?.parameters}\n\`\`\``} /> }))}
                                     />
                                 </div>
                             }
@@ -299,7 +322,7 @@ function ChatBox () {
                                 return <Collapse 
                                     style={{}}
                                     ghost
-                                    items={[{ key: wechatMessageConfig?.tools?.call_id, label: `工具调用结果：${wechatMessageConfig?.tools?.tool_name}`, children: <MarkdownRender raw={`**结果：**\n\n\`\`\`json\n${wechatMessageConfig?.tools?.result}\n\`\`\``} /> }]}
+                                    items={[{ key: wechatMessageConfig?.tools?.call_id, label: `工具调用结果：${wechatMessageConfig?.tools?.tool_name}`, children: <MarkdownRender components={MARKDOWN_COMPONENTS} raw={`**结果：**\n\n\`\`\`json\n${wechatMessageConfig?.tools?.result}\n\`\`\``} /> }]}
                                 />
                             }
 
@@ -710,7 +733,7 @@ function ModelSelection() {
         const info = modelList?.find(item => item.model_id === selectModel);
         try {
             if (!info?.description) return <Text>暂无描述</Text>
-            return <MarkdownRender raw={info?.description} />
+            return <MarkdownRender components={MARKDOWN_COMPONENTS} raw={info?.description} />
         }catch (error) {
             return <Text>{info}</Text>
         }
@@ -798,7 +821,7 @@ function ModelSelection() {
             <Row style={{maxHeight: '85%', overflowY: 'auto'}}>
                 <Col span={24} style={{padding: '0 10px', height: '100%'}}>
                     {modelInfoRender()}
-                    <MarkdownRender raw={webotInfo} format='md'  style={{paddingTop: 10}}/>
+                    <MarkdownRender components={MARKDOWN_COMPONENTS} raw={webotInfo} format='md'  style={{paddingTop: 10}}/>
                 </Col>
             </Row>
         </Flex>
